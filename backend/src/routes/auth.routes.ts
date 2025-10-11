@@ -2,11 +2,13 @@ import { Router } from "express";
 import { AppDataSource } from "../database/data-source";
 import { User } from "../entities/User";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
 const router = Router();
 const repo = AppDataSource.getRepository(User);
+const JWT_SECRET = process.env.JWT_SECRET || "chave_super_secreta";
 
-// POST /register → Criação de usuário
+// POST /auth/register
 router.post("/register", async (req, res) => {
   try {
     const { email, name, role, password } = req.body;
@@ -17,13 +19,7 @@ router.post("/register", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = repo.create({
-      email,
-      name,
-      role,
-      password: hashedPassword,
-    });
+    const user = repo.create({ email, name, role, password: hashedPassword });
 
     await repo.save(user);
 
@@ -32,32 +28,35 @@ router.post("/register", async (req, res) => {
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
     });
   } catch (error) {
-    console.error("❌ Erro ao registrar usuário:", error);
     res.status(500).json({ message: "Erro ao registrar usuário", error });
   }
 });
 
-// POST /login → Autenticação
+// POST /auth/login
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-
     const user = await repo.findOneBy({ email });
+
     if (!user) {
       return res.status(401).json({ message: "Credenciais inválidas" });
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
       return res.status(401).json({ message: "Credenciais inválidas" });
     }
 
-    // 🔑 Aqui é onde você pode adicionar:
-    // req.session.userId = user.id;
-    // depois de configurar express-session
+    // Gera o token JWT
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "8h" }
+    );
 
     res.json({
       message: "Login bem-sucedido",
+      token,
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
     });
   } catch (error) {

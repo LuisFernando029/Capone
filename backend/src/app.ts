@@ -4,6 +4,7 @@ import orderRoutes from "./routes/order.routes"
 import customerRoutes from "./routes/customer.routes";
 import authRoutes from "./routes/auth.routes";
 import userRoutes from "./routes/user.routes";
+import tableRoutes from "./routes/table.routes";
 
 const app = express()
 app.use(express.json())
@@ -13,5 +14,6 @@ app.use("/customers", customerRoutes);
 app.use("/orders", orderRoutes);
 app.use("/auth", authRoutes);
 app.use("/users", userRoutes);
+app.use("/tables", tableRoutes);
 
 export default app

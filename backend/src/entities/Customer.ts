@@ -14,6 +14,9 @@ export class Customer {
   @Column({ nullable: true })
   phone?: string;
 
+  @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
+  totalSpent!: number;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

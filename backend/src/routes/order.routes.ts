@@ -4,26 +4,36 @@ import { Order } from "../entities/Order";
 import { OrderItem } from "../entities/OrderItem";
 import { Customer } from "../entities/Customer";
 import { Product } from "../entities/Products";
+import { Table } from "../entities/Table";
 
 const router = Router();
 const orderRepo = AppDataSource.getRepository(Order);
 const orderItemRepo = AppDataSource.getRepository(OrderItem);
 const customerRepo = AppDataSource.getRepository(Customer);
 const productRepo = AppDataSource.getRepository(Product);
+const tableRepo = AppDataSource.getRepository(Table);
 
-// GET all orders
+// ==================================================
+// 🔹 GET all orders
+// ==================================================
 router.get("/", async (_, res) => {
-  const orders = await orderRepo.find({ relations: ["customer"] });
-  res.json(orders);
+  try {
+    const orders = await orderRepo.find({ relations: ["customer", "table"] });
+    res.json(orders);
+  } catch (error) {
+    res.status(400).json({ message: "Erro ao buscar pedidos", error });
+  }
 });
 
-// GET order by ID
+// ==================================================
+// 🔹 GET order by ID
+// ==================================================
 router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const order = await orderRepo.findOne({
       where: { id: Number(id) },
-      relations: ["customer"],
+      relations: ["customer", "table"],
     });
 
     if (!order) {
@@ -41,28 +51,39 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// POST create order
+// ==================================================
+// 🔹 POST create order (com mesa)
+// ==================================================
 router.post("/", async (req, res) => {
   try {
-    const { customerId, items } = req.body;
+    const { customerId, tableId, items } = req.body;
 
     const customer = await customerRepo.findOneBy({ id: customerId });
-    if (!customer) {
+    if (!customer)
       return res.status(404).json({ message: "Cliente não encontrado" });
-    }
 
-    // cria pedido
-    const order = orderRepo.create({ customer, total: 0 });
+    const table = await tableRepo.findOneBy({ id: tableId });
+    if (!table)
+      return res.status(404).json({ message: "Mesa não encontrada" });
+
+    table.available = false;
+    await tableRepo.save(table);
+
+    const order = orderRepo.create({
+      customer,
+      table: { id: table.id } as any,
+      total: 0,
+      status: "pending",
+    });
     await orderRepo.save(order);
 
     let total = 0;
+    const orderItems = [];
 
-    // cria itens do pedido
     for (const item of items) {
       const product = await productRepo.findOneBy({ id: item.productId });
-      if (!product) {
+      if (!product)
         return res.status(404).json({ message: `Produto ${item.productId} não encontrado` });
-      }
 
       const orderItem = orderItemRepo.create({
         order,
@@ -71,54 +92,112 @@ router.post("/", async (req, res) => {
         unitPrice: product.price,
       });
 
-      total += product.price * item.quantity;
+      total += Number(product.price) * item.quantity;
       await orderItemRepo.save(orderItem);
+      orderItems.push(orderItem);
     }
 
-    // atualiza total
     order.total = total;
     await orderRepo.save(order);
 
-    res.status(201).json({ ...order, items });
+    customer.totalSpent = Number(customer.totalSpent || 0) + total;
+    await customerRepo.save(customer);
+
+    const createdOrder = await orderRepo.findOne({
+      where: { id: order.id },
+      relations: ["customer", "table"],
+    });
+
+    // 🔹 inclui os items na resposta
+    res.status(201).json({ ...createdOrder, items: orderItems });
   } catch (error) {
+    console.error("Erro ao criar pedido:", error);
     res.status(400).json({ message: "Erro ao criar pedido", error });
   }
 });
 
-// PATCH update order (status ou itens)
+// ==================================================
+// 🔹 PATCH update order (status ou liberar mesa)
+// ==================================================
 router.patch("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
-    const order = await orderRepo.findOneBy({ id: Number(id) });
+    const order = await orderRepo.findOne({
+      where: { id: Number(id) },
+      relations: ["table"],
+    });
+
     if (!order) {
       return res.status(404).json({ message: "Pedido não encontrado" });
     }
 
-    if (status) order.status = status;
-    await orderRepo.save(order);
+    // atualiza status
+    if (status) {
+      order.status = status;
+      await orderRepo.save(order);
+
+      // ✅ se o pedido for finalizado, liberar a mesa
+      if (status.toLowerCase() === "completed" || status.toLowerCase() === "finalizado") {
+        if (order.table) {
+          const table = await tableRepo.findOneBy({ id: order.table.id });
+          if (table) {
+            table.available = true;
+            await tableRepo.save(table);
+          }
+        }
+      }
+    }
 
     res.json(order);
   } catch (error) {
+    console.error("Erro ao atualizar pedido:", error);
     res.status(400).json({ message: "Erro ao atualizar pedido", error });
   }
 });
 
-// DELETE order
+// ==================================================
+// 🔹 DELETE order (remove e ajusta totalSpent)
+// ==================================================
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const order = await orderRepo.findOneBy({ id: Number(id) });
+    const order = await orderRepo.findOne({
+      where: { id: Number(id) },
+      relations: ["table", "customer"],
+    });
 
     if (!order) {
       return res.status(404).json({ message: "Pedido não encontrado" });
     }
 
+    // ✅ liberar mesa
+    if (order.table) {
+      const table = await tableRepo.findOneBy({ id: order.table.id });
+      if (table) {
+        table.available = true;
+        await tableRepo.save(table);
+      }
+    }
+
+    // ✅ subtrair valor do pedido do total do cliente
+    if (order.customer) {
+      const customer = await customerRepo.findOneBy({ id: order.customer.id });
+      if (customer) {
+        customer.totalSpent = Math.max(
+          0,
+          Number(customer.totalSpent || 0) - Number(order.total || 0)
+        );
+        await customerRepo.save(customer);
+      }
+    }
+
     await orderRepo.remove(order);
 
-    res.json({ message: "Pedido removido com sucesso" });
+    res.json({ message: "Pedido removido com sucesso e mesa liberada" });
   } catch (error) {
+    console.error("Erro ao remover pedido:", error);
     res.status(400).json({ message: "Erro ao remover pedido", error });
   }
 });

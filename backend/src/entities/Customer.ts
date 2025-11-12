@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne } from "typeorm";
+import { Company } from "./Company";
 
 @Entity()
 export class Customer {
@@ -16,6 +17,12 @@ export class Customer {
 
   @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
   totalSpent!: number;
+
+  @ManyToOne(() => Company, (company) => company.customers, {
+    onDelete: "CASCADE",
+    nullable: true,
+  })
+  company!: Company;
 
   @CreateDateColumn()
   createdAt!: Date;

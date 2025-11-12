@@ -5,6 +5,7 @@ import { OrderItem } from "../entities/OrderItem";
 import { Customer } from "../entities/Customer";
 import { Product } from "../entities/Products";
 import { Table } from "../entities/Table";
+import { verifyLicense } from "../middlewares/verifyLicense";
 
 const router = Router();
 const orderRepo = AppDataSource.getRepository(Order);
@@ -13,85 +14,55 @@ const customerRepo = AppDataSource.getRepository(Customer);
 const productRepo = AppDataSource.getRepository(Product);
 const tableRepo = AppDataSource.getRepository(Table);
 
-// ==================================================
-// 🔹 GET all orders
-// ==================================================
-router.get("/", async (_, res) => {
-  try {
-    const orders = await orderRepo.find({ relations: ["customer", "table"] });
-    res.json(orders);
-  } catch (error) {
-    res.status(400).json({ message: "Erro ao buscar pedidos", error });
-  }
+// GET all orders
+router.get("/", verifyLicense, async (req, res) => {
+  const company = (req as any).company;
+  const orders = await orderRepo.find({ where: { company: { id: company.id } }, relations: ["customer", "table"] });
+  res.json(orders);
 });
 
-// ==================================================
-// 🔹 GET order by ID
-// ==================================================
-router.get("/:id", async (req, res) => {
+// GET order by ID
+router.get("/:id", verifyLicense, async (req, res) => {
   try {
     const { id } = req.params;
-    const order = await orderRepo.findOne({
-      where: { id: Number(id) },
-      relations: ["customer", "table"],
-    });
+    const company = (req as any).company;
 
-    if (!order) {
-      return res.status(404).json({ message: "Pedido não encontrado" });
-    }
+    const order = await orderRepo.findOne({ where: { id: Number(id), company: { id: company.id } }, relations: ["customer", "table"] });
+    if (!order) return res.status(404).json({ message: "Pedido não encontrado" });
 
-    const items = await orderItemRepo.find({
-      where: { order: { id: Number(id) } },
-      relations: ["product"],
-    });
-
+    const items = await orderItemRepo.find({ where: { order: { id: order.id } }, relations: ["product"] });
     res.json({ ...order, items });
   } catch (error) {
     res.status(400).json({ message: "Erro ao buscar pedido", error });
   }
 });
 
-// ==================================================
-// 🔹 POST create order (com mesa)
-// ==================================================
-router.post("/", async (req, res) => {
+// POST create order
+router.post("/", verifyLicense, async (req, res) => {
   try {
     const { customerId, tableId, items } = req.body;
+    const company = (req as any).company;
 
-    const customer = await customerRepo.findOneBy({ id: customerId });
-    if (!customer)
-      return res.status(404).json({ message: "Cliente não encontrado" });
+    const customer = await customerRepo.findOne({ where: { id: customerId, company: { id: company.id } } });
+    if (!customer) return res.status(404).json({ message: "Cliente não encontrado" });
 
-    const table = await tableRepo.findOneBy({ id: tableId });
-    if (!table)
-      return res.status(404).json({ message: "Mesa não encontrada" });
+    const table = await tableRepo.findOne({ where: { id: tableId, company: { id: company.id } } });
+    if (!table) return res.status(404).json({ message: "Mesa não encontrada" });
 
     table.available = false;
     await tableRepo.save(table);
 
-    const order = orderRepo.create({
-      customer,
-      table: { id: table.id } as any,
-      total: 0,
-      status: "pending",
-    });
+    const order = orderRepo.create({ customer, table, company, total: 0, status: "pending" });
     await orderRepo.save(order);
 
     let total = 0;
     const orderItems = [];
 
     for (const item of items) {
-      const product = await productRepo.findOneBy({ id: item.productId });
-      if (!product)
-        return res.status(404).json({ message: `Produto ${item.productId} não encontrado` });
+      const product = await productRepo.findOne({ where: { id: item.productId } });
+      if (!product) return res.status(404).json({ message: `Produto ${item.productId} não encontrado` });
 
-      const orderItem = orderItemRepo.create({
-        order,
-        product,
-        quantity: item.quantity,
-        unitPrice: product.price,
-      });
-
+      const orderItem = orderItemRepo.create({ order, product, quantity: item.quantity, unitPrice: product.price });
       total += Number(product.price) * item.quantity;
       await orderItemRepo.save(orderItem);
       orderItems.push(orderItem);
@@ -103,101 +74,64 @@ router.post("/", async (req, res) => {
     customer.totalSpent = Number(customer.totalSpent || 0) + total;
     await customerRepo.save(customer);
 
-    const createdOrder = await orderRepo.findOne({
-      where: { id: order.id },
-      relations: ["customer", "table"],
-    });
-
-    // 🔹 inclui os items na resposta
+    const createdOrder = await orderRepo.findOne({ where: { id: order.id }, relations: ["customer", "table"] });
     res.status(201).json({ ...createdOrder, items: orderItems });
   } catch (error) {
-    console.error("Erro ao criar pedido:", error);
+    console.error(error);
     res.status(400).json({ message: "Erro ao criar pedido", error });
   }
 });
 
-// ==================================================
-// 🔹 PATCH update order (status ou liberar mesa)
-// ==================================================
-router.patch("/:id", async (req, res) => {
+// PATCH update order
+router.patch("/:id", verifyLicense, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const company = (req as any).company;
 
-    const order = await orderRepo.findOne({
-      where: { id: Number(id) },
-      relations: ["table"],
-    });
+    const order = await orderRepo.findOne({ where: { id: Number(id), company: { id: company.id } }, relations: ["table"] });
+    if (!order) return res.status(404).json({ message: "Pedido não encontrado" });
 
-    if (!order) {
-      return res.status(404).json({ message: "Pedido não encontrado" });
-    }
-
-    // atualiza status
     if (status) {
       order.status = status;
       await orderRepo.save(order);
 
-      // ✅ se o pedido for finalizado, liberar a mesa
-      if (status.toLowerCase() === "completed" || status.toLowerCase() === "finalizado") {
-        if (order.table) {
-          const table = await tableRepo.findOneBy({ id: order.table.id });
-          if (table) {
-            table.available = true;
-            await tableRepo.save(table);
-          }
-        }
+      if (["completed", "finalizado"].includes(status.toLowerCase()) && order.table) {
+        order.table.available = true;
+        await tableRepo.save(order.table);
       }
     }
 
     res.json(order);
   } catch (error) {
-    console.error("Erro ao atualizar pedido:", error);
+    console.error(error);
     res.status(400).json({ message: "Erro ao atualizar pedido", error });
   }
 });
 
-// ==================================================
-// 🔹 DELETE order (remove e ajusta totalSpent)
-// ==================================================
-router.delete("/:id", async (req, res) => {
+// DELETE order
+router.delete("/:id", verifyLicense, async (req, res) => {
   try {
     const { id } = req.params;
-    const order = await orderRepo.findOne({
-      where: { id: Number(id) },
-      relations: ["table", "customer"],
-    });
+    const company = (req as any).company;
 
-    if (!order) {
-      return res.status(404).json({ message: "Pedido não encontrado" });
-    }
+    const order = await orderRepo.findOne({ where: { id: Number(id), company: { id: company.id } }, relations: ["table", "customer"] });
+    if (!order) return res.status(404).json({ message: "Pedido não encontrado" });
 
-    // ✅ liberar mesa
     if (order.table) {
-      const table = await tableRepo.findOneBy({ id: order.table.id });
-      if (table) {
-        table.available = true;
-        await tableRepo.save(table);
-      }
+      order.table.available = true;
+      await tableRepo.save(order.table);
     }
 
-    // ✅ subtrair valor do pedido do total do cliente
     if (order.customer) {
-      const customer = await customerRepo.findOneBy({ id: order.customer.id });
-      if (customer) {
-        customer.totalSpent = Math.max(
-          0,
-          Number(customer.totalSpent || 0) - Number(order.total || 0)
-        );
-        await customerRepo.save(customer);
-      }
+      order.customer.totalSpent = Math.max(0, Number(order.customer.totalSpent || 0) - Number(order.total || 0));
+      await customerRepo.save(order.customer);
     }
 
     await orderRepo.remove(order);
-
     res.json({ message: "Pedido removido com sucesso e mesa liberada" });
   } catch (error) {
-    console.error("Erro ao remover pedido:", error);
+    console.error(error);
     res.status(400).json({ message: "Erro ao remover pedido", error });
   }
 });

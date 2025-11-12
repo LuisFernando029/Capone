@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne } from "typeorm";
 import { Order } from "./Order";
+import { Company } from "./Company";
 
 @Entity()
 export class Table {
@@ -7,10 +8,16 @@ export class Table {
   id!: number;
 
   @Column({ unique: true })
-  number!: number; // número da mesa
+  number!: number;
 
   @Column({ default: true })
-  available!: boolean; // mesa livre ou ocupada
+  available!: boolean;
+
+  @ManyToOne(() => Company, (company) => company.tables, {
+    onDelete: "CASCADE",
+    nullable: true,
+  })
+  company!: Company;
 
   @OneToMany(() => Order, (order) => order.table)
   orders!: Order[];

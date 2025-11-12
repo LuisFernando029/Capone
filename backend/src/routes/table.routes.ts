@@ -3,18 +3,18 @@ import { AppDataSource } from "../database/data-source";
 import { Table } from "../entities/Table";
 import { Order } from "../entities/Order";
 import { OrderItem } from "../entities/OrderItem";
+import { verifyLicense } from "../middlewares/verifyLicense";
 
 const router = Router();
 const tableRepo = AppDataSource.getRepository(Table);
 const orderRepo = AppDataSource.getRepository(Order);
 const orderItemRepo = AppDataSource.getRepository(OrderItem);
 
-// ========================================
-// GET todas as mesas
-// ========================================
-router.get("/", async (_, res) => {
+// GET all tables
+router.get("/", verifyLicense, async (req, res) => {
   try {
-    const tables = await tableRepo.find({ relations: ["orders"] });
+    const company = (req as any).company;
+    const tables = await tableRepo.find({ where: { company: { id: company.id } }, relations: ["orders"] });
     res.json(tables);
   } catch (error) {
     console.error(error);
@@ -22,20 +22,18 @@ router.get("/", async (_, res) => {
   }
 });
 
-// ========================================
-// GET mesa por ID
-// ========================================
-router.get("/:id", async (req, res) => {
+// GET table by ID
+router.get("/:id", verifyLicense, async (req, res) => {
   try {
     const { id } = req.params;
+    const company = (req as any).company;
+
     const table = await tableRepo.findOne({
-      where: { id: Number(id) },
+      where: { id: Number(id), company: { id: company.id } },
       relations: ["orders"],
     });
 
-    if (!table) {
-      return res.status(404).json({ message: "Mesa não encontrada" });
-    }
+    if (!table) return res.status(404).json({ message: "Mesa não encontrada" });
 
     res.json(table);
   } catch (error) {
@@ -44,47 +42,32 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ========================================
-// GET pedidos de uma mesa (pelo número da mesa)
-// Exemplo: GET /tables/4/orders?status=pending
-// ========================================
-router.get("/:number/orders", async (req, res) => {
+// GET orders of a table
+router.get("/:number/orders", verifyLicense, async (req, res) => {
   try {
     const { number } = req.params;
-    const { status } = req.query; // status opcional
+    const { status } = req.query;
+    const company = (req as any).company;
 
-    // busca mesa pelo número
-    const table = await tableRepo.findOne({
-      where: { number: Number(number) },
-    });
+    const table = await tableRepo.findOne({ where: { number: Number(number), company: { id: company.id } } });
+    if (!table) return res.status(404).json({ message: "Mesa não encontrada" });
 
-    if (!table) {
-      return res.status(404).json({ message: "Mesa não encontrada" });
-    }
-
-    // filtro dinâmico
-    const whereClause: any = { table: { id: table.id } };
+    const whereClause: any = { table: { id: table.id }, company: { id: company.id } };
     if (status) whereClause.status = status;
 
-    // busca pedidos da mesa
     const orders = await orderRepo.find({
       where: whereClause,
       relations: ["customer", "table"],
       order: { createdAt: "DESC" },
     });
 
-    // busca e adiciona os itens de cada pedido
     const results = [];
     for (const order of orders) {
       const items = await orderItemRepo.find({
         where: { order: { id: order.id } },
         relations: ["product"],
       });
-
-      results.push({
-        ...order,
-        items,
-      });
+      results.push({ ...order, items });
     }
 
     res.json(results);
@@ -94,19 +77,16 @@ router.get("/:number/orders", async (req, res) => {
   }
 });
 
-// ========================================
-// POST criar mesa
-// ========================================
-router.post("/", async (req, res) => {
+// POST create table
+router.post("/", verifyLicense, async (req, res) => {
   try {
     const { number } = req.body;
+    const company = (req as any).company;
 
-    const existing = await tableRepo.findOneBy({ number });
-    if (existing) {
-      return res.status(400).json({ message: "Número da mesa já existe" });
-    }
+    const existing = await tableRepo.findOne({ where: { number, company: { id: company.id } } });
+    if (existing) return res.status(400).json({ message: "Número da mesa já existe" });
 
-    const table = tableRepo.create({ number, available: true });
+    const table = tableRepo.create({ number, available: true, company });
     await tableRepo.save(table);
 
     res.status(201).json(table);
@@ -116,20 +96,16 @@ router.post("/", async (req, res) => {
   }
 });
 
-// ========================================
-// PATCH atualizar mesa (ex: disponibilidade)
-// ========================================
-router.patch("/:id", async (req, res) => {
+// PATCH update table
+router.patch("/:id", verifyLicense, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
+    const company = (req as any).company;
 
-    const table = await tableRepo.findOneBy({ id: Number(id) });
-    if (!table) {
-      return res.status(404).json({ message: "Mesa não encontrada" });
-    }
+    const table = await tableRepo.findOne({ where: { id: Number(id), company: { id: company.id } } });
+    if (!table) return res.status(404).json({ message: "Mesa não encontrada" });
 
-    // mescla os novos dados e salva
     tableRepo.merge(table, updates);
     const updated = await tableRepo.save(table);
 
@@ -140,17 +116,14 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-// ========================================
-// DELETE mesa
-// ========================================
-router.delete("/:id", async (req, res) => {
+// DELETE table
+router.delete("/:id", verifyLicense, async (req, res) => {
   try {
     const { id } = req.params;
-    const table = await tableRepo.findOneBy({ id: Number(id) });
+    const company = (req as any).company;
 
-    if (!table) {
-      return res.status(404).json({ message: "Mesa não encontrada" });
-    }
+    const table = await tableRepo.findOne({ where: { id: Number(id), company: { id: company.id } } });
+    if (!table) return res.status(404).json({ message: "Mesa não encontrada" });
 
     await tableRepo.remove(table);
     res.json({ message: "Mesa removida com sucesso" });

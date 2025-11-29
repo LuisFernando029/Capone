@@ -1,91 +1,107 @@
 import { Router } from "express";
 import { AppDataSource } from "../database/data-source";
 import { User } from "../entities/User";
-import { authenticateToken } from "../middlewares/auth.middleware";
 import bcrypt from "bcrypt";
 
 const router = Router();
 const repo = AppDataSource.getRepository(User);
 
-// Todas as rotas abaixo exigem token
-router.use(authenticateToken);
-
-// GET /users/me → retorna o próprio usuário logado
-router.get("/me", async (req, res) => {
-  const userReq = (req as any).user; // vem do token
-
-  const user = await repo.findOneBy({ id: userReq.id });
-  if (!user) {
-    return res.status(404).json({ message: "Usuário não encontrado" });
+// GET all users
+router.get("/", async (_, res) => {
+  try {
+    const users = await repo.find();
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao buscar usuários", error });
   }
-
-  // opcional: não retornar o hash da senha
-  const { password, ...userData } = user;
-  res.json(userData);
 });
 
-// GET all users (somente admin)
-router.get("/", async (req, res) => {
-  const user = (req as any).user;
-  if (user.role !== "admin") {
-    return res.status(403).json({ message: "Acesso negado" });
-  }
-
-  const users = await repo.find();
-  res.json(users);
-});
-
-// GET user by ID (pode ver só o próprio ou admin)
+// GET user by ID
 router.get("/:id", async (req, res) => {
-  const { id } = req.params;
-  const userReq = (req as any).user;
+  try {
+    const { id } = req.params;
+    const user = await repo.findOneBy({ id: Number(id) });
 
-  if (userReq.role !== "admin" && userReq.id !== Number(id)) {
-    return res.status(403).json({ message: "Acesso negado" });
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    const { password: _, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao buscar usuário", error });
   }
-
-  const user = await repo.findOneBy({ id: Number(id) });
-  if (!user) return res.status(404).json({ message: "Usuário não encontrado" });
-
-  res.json(user);
 });
 
-// PATCH update user (próprio ou admin)
+// POST create user
+router.post("/", async (req, res) => {
+  try {
+    const { email, password, name, role } = req.body;
+
+    const existing = await repo.findOneBy({ email });
+    if (existing) {
+      return res.status(400).json({ message: "Email já cadastrado" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = repo.create({
+      email,
+      password: hashedPassword,
+      name,
+      role,
+      isActive: true
+    });
+
+    await repo.save(user);
+
+    const { password: _, ...userWithoutPassword } = user;
+    res.status(201).json(userWithoutPassword);
+  } catch (error) {
+    res.status(400).json({ message: "Erro ao criar usuário", error });
+  }
+});
+
+// PATCH update user
 router.patch("/:id", async (req, res) => {
-  const { id } = req.params;
-  const userReq = (req as any).user;
-  const { password, ...rest } = req.body;
+  try {
+    const { id } = req.params;
+    const user = await repo.findOneBy({ id: Number(id) });
 
-  if (userReq.role !== "admin" && userReq.id !== Number(id)) {
-    return res.status(403).json({ message: "Acesso negado" });
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    if (req.body.password) {
+      req.body.password = await bcrypt.hash(req.body.password, 10);
+    }
+
+    repo.merge(user, req.body);
+    const updated = await repo.save(user);
+
+    const { password: _, ...userWithoutPassword } = updated;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    res.status(400).json({ message: "Erro ao atualizar usuário", error });
   }
-
-  const user = await repo.findOneBy({ id: Number(id) });
-  if (!user) return res.status(404).json({ message: "Usuário não encontrado" });
-
-  if (password) rest.password = await bcrypt.hash(password, 10);
-  repo.merge(user, rest);
-  const updated = await repo.save(user);
-  res.json(updated);
 });
 
-
-
-
-// DELETE user (somente admin)
+// DELETE remove user
 router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
-  const userReq = (req as any).user;
+  try {
+    const { id } = req.params;
+    const user = await repo.findOneBy({ id: Number(id) });
 
-  if (userReq.role !== "admin") {
-    return res.status(403).json({ message: "Acesso negado" });
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    await repo.remove(user);
+
+    res.json({ message: "Usuário removido com sucesso" });
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao remover usuário", error });
   }
-
-  const user = await repo.findOneBy({ id: Number(id) });
-  if (!user) return res.status(404).json({ message: "Usuário não encontrado" });
-
-  await repo.remove(user);
-  res.json({ message: "Usuário removido com sucesso" });
 });
 
 export default router;

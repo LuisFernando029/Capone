@@ -1,23 +1,25 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany } from "typeorm";
 import { Order } from "./Order";
-import { Company } from "./Company";
 
 @Entity()
 export class Table {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ unique: true })
+  @Column()
   number!: number;
 
-  @Column({ default: true })
-  available!: boolean;
+  @Column()
+  capacity?: number;
 
-  @ManyToOne(() => Company, (company) => company.tables, {
-    onDelete: "CASCADE",
-    nullable: true,
-  })
-  company!: Company;
+  @Column({ default: "available" })
+  status!: string;
+
+  @Column({ nullable: true })
+  location?: string;
+
+  @CreateDateColumn()
+  createdAt!: Date;
 
   @OneToMany(() => Order, (order) => order.table)
   orders!: Order[];

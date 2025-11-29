@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from "typeorm";
 import { Order } from "./Order";
 import { Product } from "./Products";
 
@@ -7,10 +7,12 @@ export class OrderItem {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => Order, (order) => order.id, { onDelete: "CASCADE" })
+  @ManyToOne(() => Order, (order) => order.items, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "orderId" })
   order!: Order;
 
-  @ManyToOne(() => Product, (product) => product.id, { eager: true })
+  @ManyToOne(() => Product, { eager: true })
+  @JoinColumn({ name: "productId" })
   product!: Product;
 
   @Column("int")
@@ -18,4 +20,7 @@ export class OrderItem {
 
   @Column("decimal", { precision: 10, scale: 2 })
   unitPrice!: number;
+
+  @Column({ type: "text", nullable: true })
+  notes?: string;
 }

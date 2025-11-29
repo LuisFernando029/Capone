@@ -7,8 +7,6 @@ import { Order } from "../entities/Order";
 import { OrderItem } from "../entities/OrderItem";
 import { User } from "../entities/User";
 import { Table } from "../entities/Table";
-import { License } from "../entities/License";
-import { Company } from "../entities/Company";
 
 export const AppDataSource = new DataSource({
   type: "postgres",
@@ -19,7 +17,7 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_NAME,
   synchronize: true, // só para dev! em produção usar migrations
   logging: false,
-  entities: [Product, Customer, Order, OrderItem, User, Table, License, Company],
+  entities: [Product, Customer, Order, OrderItem, User, Table,],
   migrations: [],
   subscribers: [],
 });

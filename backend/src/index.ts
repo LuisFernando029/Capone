@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 4000;
 AppDataSource.initialize()
   .then(() => {
     console.log("✅ Database connected!");
-    app.listen(PORT, () => {
+    app.listen(4000, "0.0.0.0",() => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
     });
   })

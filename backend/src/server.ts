@@ -7,9 +7,6 @@ import orderRoutes from "./routes/order.routes";
 import authRoutes from "./routes/auth.routes";
 import userRoutes from "./routes/user.routes";
 import tableRoutes from "./routes/table.routes";
-import { verifyLicense } from "./middlewares/verifyLicense";
-import licenseRoutes from "./routes/license.routes";
-import companiesRoutes from "./routes/companies.routes";
 
 const app = express();
 
@@ -34,10 +31,8 @@ app.use("/auth", authRoutes);
 app.use("/products", productRoutes);
 app.use("/customers", customerRoutes);
 app.use("/users", userRoutes);
-app.use("/companies", companiesRoutes);
-app.use("/licenses", licenseRoutes);
-app.use("/orders", verifyLicense, orderRoutes);
-app.use("/tables", verifyLicense, tableRoutes);
+app.use("/orders", orderRoutes);
+app.use("/tables", tableRoutes);
 
 
 export default app;

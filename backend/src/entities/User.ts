@@ -9,13 +9,16 @@ export class User {
   email!: string;
 
   @Column()
+  password!: string;
+
+  @Column()
   name!: string;
 
-  @Column()
+  @Column({ default: "waiter" })
   role!: string;
 
-  @Column()
-  password!: string; // será armazenada com hash
+  @Column({ default: true })
+  isActive!: boolean;
 
   @CreateDateColumn()
   createdAt!: Date;

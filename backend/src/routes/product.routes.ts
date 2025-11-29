@@ -7,8 +7,12 @@ const repo = AppDataSource.getRepository(Product);
 
 // GET all products
 router.get("/", async (_, res) => {
-  const products = await repo.find();
-  res.json(products);
+  try {
+    const products = await repo.find();
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao buscar produtos", error });
+  }
 });
 
 // GET product by ID
@@ -23,7 +27,7 @@ router.get("/:id", async (req, res) => {
 
     res.json(product);
   } catch (error) {
-    res.status(400).json({ message: "Erro ao buscar produto", error });
+    res.status(500).json({ message: "Erro ao buscar produto", error });
   }
 });
 
@@ -48,7 +52,7 @@ router.patch("/:id", async (req, res) => {
       return res.status(404).json({ message: "Produto não encontrado" });
     }
 
-    repo.merge(product, req.body); // atualiza apenas os campos enviados
+    repo.merge(product, req.body);
     const updated = await repo.save(product);
 
     res.json(updated);
@@ -71,7 +75,69 @@ router.delete("/:id", async (req, res) => {
 
     res.json({ message: "Produto removido com sucesso" });
   } catch (error) {
-    res.status(400).json({ message: "Erro ao remover produto", error });
+    res.status(500).json({ message: "Erro ao remover produto", error });
+  }
+});
+
+// PATCH add stock (adicionar estoque)
+router.patch("/:id/add-stock", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quantity } = req.body;
+
+    if (!quantity || quantity <= 0) {
+      return res.status(400).json({ message: "Quantidade inválida" });
+    }
+
+    const product = await repo.findOneBy({ id: Number(id) });
+    if (!product) {
+      return res.status(404).json({ message: "Produto não encontrado" });
+    }
+
+    product.quantity += Number(quantity);
+    await repo.save(product);
+
+    res.json({
+      message: "Estoque adicionado com sucesso",
+      product
+    });
+  } catch (error) {
+    res.status(400).json({ message: "Erro ao adicionar estoque", error });
+  }
+});
+
+// PATCH remove stock (remover estoque)
+router.patch("/:id/remove-stock", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quantity } = req.body;
+
+    if (!quantity || quantity <= 0) {
+      return res.status(400).json({ message: "Quantidade inválida" });
+    }
+
+    const product = await repo.findOneBy({ id: Number(id) });
+    if (!product) {
+      return res.status(404).json({ message: "Produto não encontrado" });
+    }
+
+    if (product.quantity < quantity) {
+      return res.status(400).json({
+        message: "Quantidade insuficiente em estoque",
+        available: product.quantity,
+        requested: quantity
+      });
+    }
+
+    product.quantity -= Number(quantity);
+    await repo.save(product);
+
+    res.json({
+      message: "Estoque removido com sucesso",
+      product
+    });
+  } catch (error) {
+    res.status(400).json({ message: "Erro ao remover estoque", error });
   }
 });
 

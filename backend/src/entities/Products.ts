@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from "typeorm";
 
 @Entity()
 export class Product {
@@ -8,9 +8,24 @@ export class Product {
   @Column()
   name!: string;
 
-  @Column("decimal", { precision: 10, scale: 2 })
+  @Column({ type: "text", nullable: true })
+  description?: string;
+
+  @Column({ type: "decimal", precision: 10, scale: 2 })
   price!: number;
+
+  @Column({ nullable: true })
+  category?: string;
+
+  @Column({ nullable: true })
+  image?: string;
 
   @Column({ default: true })
   isAvailable!: boolean;
+
+  @Column({ type: "int", default: 0 })
+  quantity!: number;
+
+  @CreateDateColumn()
+  createdAt!: Date;
 }

@@ -1,29 +1,42 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from "typeorm";
-import { Customer } from "./Customer";
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+} from "typeorm";
 import { Table } from "./Table";
-import { Company } from "./Company";
+import { Customer } from "./Customer";
+import { OrderItem } from "./OrderItem";
 
 @Entity()
 export class Order {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => Customer, { eager: true, onDelete: "CASCADE" })
-  customer!: Customer;
-
-  @ManyToOne(() => Table, (table) => table.orders, { eager: true, nullable: true, onDelete: "SET NULL" })
+  @ManyToOne(() => Table, (table) => table.orders, { nullable: true })
   @JoinColumn({ name: "tableId" })
-  table!: Table;
+  table?: Table;
 
-  @ManyToOne(() => Company, (company) => company.orders, { onDelete: "CASCADE", nullable: true })
-  company!: Company;
-
-  @Column("decimal", { precision: 10, scale: 2 })
-  total!: number;
+  @ManyToOne(() => Customer, (customer) => customer.orders, { nullable: true })
+  @JoinColumn({ name: "customerId" })
+  customer?: Customer;
 
   @Column({ default: "pending" })
   status!: string;
 
+  @Column({ type: "text", nullable: true })
+  notes?: string;
+
   @CreateDateColumn()
   createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
+
+  @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
+  items!: OrderItem[];
 }

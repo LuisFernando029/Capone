@@ -1,5 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne } from "typeorm";
-import { Company } from "./Company";
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany } from "typeorm";
+import { Order } from "./Order";
 
 @Entity()
 export class Customer {
@@ -9,21 +9,21 @@ export class Customer {
   @Column()
   name!: string;
 
-  @Column({ unique: true })
-  email!: string;
+  @Column({ nullable: true })
+  email?: string;
 
   @Column({ nullable: true })
   phone?: string;
 
-  @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
-  totalSpent!: number;
+  @Column({ nullable: true })
+  cpf?: string;
 
-  @ManyToOne(() => Company, (company) => company.customers, {
-    onDelete: "CASCADE",
-    nullable: true,
-  })
-  company!: Company;
+  @Column({ nullable: true })
+  address?: string;
 
   @CreateDateColumn()
   createdAt!: Date;
+
+  @OneToMany(() => Order, (order) => order.customer)
+  orders!: Order[];
 }

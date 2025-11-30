@@ -9,7 +9,6 @@ import {
   JoinColumn,
 } from "typeorm";
 import { Table } from "./Table";
-import { Customer } from "./Customer";
 import { OrderItem } from "./OrderItem";
 
 @Entity()
@@ -21,9 +20,8 @@ export class Order {
   @JoinColumn({ name: "tableId" })
   table?: Table;
 
-  @ManyToOne(() => Customer, (customer) => customer.orders, { nullable: true })
-  @JoinColumn({ name: "customerId" })
-  customer?: Customer;
+  @Column({ type: "varchar", length: 255, nullable: true })
+  customerName?: string;
 
   @Column({ default: "pending" })
   status!: string;

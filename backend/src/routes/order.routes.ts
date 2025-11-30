@@ -3,17 +3,19 @@ import { AppDataSource } from "../database/data-source";
 import { Order } from "../entities/Order";
 import { OrderItem } from "../entities/OrderItem";
 import { Product } from "../entities/Products";
+import { Table } from "../entities/Table";
 
 const router = Router();
 const orderRepo = AppDataSource.getRepository(Order);
 const orderItemRepo = AppDataSource.getRepository(OrderItem);
 const productRepo = AppDataSource.getRepository(Product);
+const tableRepo = AppDataSource.getRepository(Table);
 
 // GET all orders
 router.get("/", async (_, res) => {
   try {
     const orders = await orderRepo.find({
-      relations: ["table", "customer", "items", "items.product"],
+      relations: ["table", "items", "items.product"],
     });
     res.json(orders);
   } catch (error) {
@@ -27,7 +29,7 @@ router.get("/:id", async (req, res) => {
     const { id } = req.params;
     const order = await orderRepo.findOne({
       where: { id: Number(id) },
-      relations: ["table", "customer", "items", "items.product"],
+      relations: ["table", "items", "items.product"],
     });
 
     if (!order) {
@@ -43,7 +45,25 @@ router.get("/:id", async (req, res) => {
 // POST create order (com validação de estoque)
 router.post("/", async (req, res) => {
   try {
-    const { tableId, customerId, status, notes, items } = req.body;
+    const { tableId, customerName, status, notes, items } = req.body;
+
+    // Validação básica
+    if (!customerName || !customerName.trim()) {
+      return res.status(400).json({
+        message: "Nome do cliente é obrigatório"
+      });
+    }
+
+    // Se tableId foi fornecido, validar se existe
+    let table = undefined;
+    if (tableId) {
+      table = await tableRepo.findOneBy({ id: tableId });
+      if (!table) {
+        return res.status(404).json({
+          message: `Mesa ID ${tableId} não encontrada`
+        });
+      }
+    }
 
     // Validar estoque para todos os itens ANTES de criar o pedido
     if (items && items.length > 0) {
@@ -74,9 +94,9 @@ router.post("/", async (req, res) => {
 
     // Criar pedido
     const order = orderRepo.create({
-      table: tableId ? { id: tableId } : undefined,
-      customer: customerId ? { id: customerId } : undefined,
-      status,
+      table: table,
+      customerName: customerName.trim(),
+      status: status || 'pending',
       notes,
     });
 
@@ -92,7 +112,7 @@ router.post("/", async (req, res) => {
           order,
           product: { id: item.productId },
           quantity: item.quantity,
-          unitPrice: item.price,
+          unitPrice: item.price || product!.price,
           notes: item.notes,
         });
         await orderItemRepo.save(orderItem);
@@ -105,11 +125,12 @@ router.post("/", async (req, res) => {
 
     const savedOrder = await orderRepo.findOne({
       where: { id: order.id },
-      relations: ["table", "customer", "items", "items.product"],
+      relations: ["table", "items", "items.product"],
     });
 
     res.status(201).json(savedOrder);
   } catch (error) {
+    console.error('Erro ao criar pedido:', error);
     res.status(400).json({ message: "Erro ao criar pedido", error });
   }
 });
@@ -124,16 +145,43 @@ router.patch("/:id", async (req, res) => {
       return res.status(404).json({ message: "Pedido não encontrado" });
     }
 
+    // Se está atualizando customerName, validar
+    if (req.body.customerName !== undefined) {
+      if (!req.body.customerName || !req.body.customerName.trim()) {
+        return res.status(400).json({
+          message: "Nome do cliente não pode ser vazio"
+        });
+      }
+      req.body.customerName = req.body.customerName.trim();
+    }
+
+    // Se está atualizando tableId, validar se existe
+    if (req.body.tableId !== undefined) {
+      if (req.body.tableId) {
+        const table = await tableRepo.findOneBy({ id: req.body.tableId });
+        if (!table) {
+          return res.status(404).json({
+            message: `Mesa ID ${req.body.tableId} não encontrada`
+          });
+        }
+        req.body.table = table;
+      } else {
+        req.body.table = null;
+      }
+      delete req.body.tableId;
+    }
+
     orderRepo.merge(order, req.body);
     const updated = await orderRepo.save(order);
 
     const result = await orderRepo.findOne({
       where: { id: updated.id },
-      relations: ["table", "customer", "items", "items.product"],
+      relations: ["table", "items", "items.product"],
     });
 
     res.json(result);
   } catch (error) {
+    console.error('Erro ao atualizar pedido:', error);
     res.status(400).json({ message: "Erro ao atualizar pedido", error });
   }
 });
@@ -204,7 +252,7 @@ router.post("/:id/items", async (req, res) => {
       order,
       product: { id: productId },
       quantity,
-      unitPrice: price,
+      unitPrice: price || product.price,
       notes,
     });
 

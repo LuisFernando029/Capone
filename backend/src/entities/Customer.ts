@@ -24,6 +24,4 @@ export class Customer {
   @CreateDateColumn()
   createdAt!: Date;
 
-  @OneToMany(() => Order, (order) => order.customer)
-  orders!: Order[];
 }

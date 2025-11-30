@@ -1,26 +1,47 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany } from "typeorm";
-import { Order } from "./Order";
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Order } from './Order';
 
-@Entity()
+export type MesaStatus = 'available' | 'busy' | 'reserved';
+export type TipoElemento = 'mesa' | 'referencia';
+
+@Entity('tables')
 export class Table {
-  @PrimaryGeneratedColumn()
-  id!: number;
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
 
-  @Column()
-  number!: number;
+  @Column({ type: 'varchar', length: 50 })
+  label!: string;
 
-  @Column()
-  capacity?: number;
+  @Column({ type: 'int' })
+  seats!: number;
 
-  @Column({ default: "available" })
-  status!: string;
+  @Column({
+    type: 'enum',
+    enum: ['available', 'busy', 'reserved'],
+    default: 'available'
+  })
+  status!: MesaStatus;
 
-  @Column({ nullable: true })
-  location?: string;
+  // Propriedades de posicionamento no canvas
+  @Column({ type: 'varchar', default: 'mesa' })
+  tipo!: TipoElemento;
 
-  @CreateDateColumn()
-  createdAt!: Date;
+  @Column({ type: 'float' })
+  x!: number;
+
+  @Column({ type: 'float' })
+  y!: number;
+
+  @Column({ type: 'float', nullable: true })
+  width?: number;
+
+  @Column({ type: 'float', nullable: true })
+  height?: number;
+
+  @Column({ type: 'boolean', default: false })
+  lock!: boolean;
 
   @OneToMany(() => Order, (order) => order.table)
   orders!: Order[];
+
 }
